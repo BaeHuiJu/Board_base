@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper	
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+
+<!-- 클래스가 속한 패키지명(FQCN)을 namespace로 한다. -->
+<mapper namespace="com.example.demo.board.mapper.BoardMapper">
+
+	<select id="boardCount" resultType="int">
+		SELECT COUNT(*)
+		FROM BOARD
+	</select>
+	
+	<select id="boardList" resultType="com.example.demo.board.domain.BoardVO">
+		SELECT *
+		FROM BOARD
+		ORDER BY BNO DESC
+	</select>
+	<!-- parameterType :: 구문에 전달된 파라미터의 패키기 경로를 포함한 전체 클래스 명이나 별칭 :: BNO가 int type -->
+	<!-- resultType :: 리턴되는 기대타입의 패키지 경로를 포함한 전체 클래스명이나 별칭 -->
+	<select id="boardDetail" parameterType="int" resultType="com.example.demo.board.domain.BoardVO">
+		SELECT *
+		FROM BOARD
+		WHERE BNO = #{bno}
+	</select>
+	
+	<select id="fileDetail" parameterType="int" resultType="com.example.demo.board.domain.FileVO">
+		SELECT *
+		FROM FILES
+		WHERE BNO = #{bno}
+	</select>
+	
+	<!-- useGeneratedKeys="true" keyProperty="idx" :: 시퀀스가 자동증가인 경우 insert후에 시퀀스 값을 리턴받을 경우에 설정해준다. 게시글 작성시 게시글 번호가 파일db에 등록 -->
+	<insert id="boardInsert" parameterType="com.example.demo.board.domain.BoardVO">
+		INSERT INTO
+		BOARD (BNO, SUBJECT, CONTENT, WRITER, REG_DATE)
+		VALUES (SQ_BNO.NEXTVAL, #{subject}, #{content}, #{writer}, sysdate)
+	</insert>
+	
+	<!-- multipart 파일 업로드 -->
+	<insert id="fileInsert" parameterType="com.example.demo.board.domain.FileVO">
+		INSERT INTO
+		FILES (FNO, BNO, FILENAME, FILEORINAME, FILEURL)
+		VALUES (SQ_FNO.NEXTVAL, SQ_BNO.CURRVAL, #{fileName}, #{fileOriName}, #{fileUrl} ) 
+	</insert>
+	
+	<update id="boardUpdate" parameterType="com.example.demo.board.domain.BoardVO">
+		UPDATE BOARD
+			SET
+		<if test="subject != null">
+			SUBJECT = #{subject}
+		</if>
+		<if test="subject != null and content != null"> 
+			, 
+		</if>
+		<if test="content != null">
+			CONTENT = #{content} 
+		</if>
+		WHERE BNO = #{bno}
+	</update>
+	
+	<delete id="boardDelete" parameterType="int">
+		DELETE FROM BOARD WHERE BNO = #{bno}
+	</delete>
+
+</mapper>

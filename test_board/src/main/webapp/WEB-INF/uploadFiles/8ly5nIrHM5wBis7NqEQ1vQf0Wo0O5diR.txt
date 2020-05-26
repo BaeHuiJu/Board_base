@@ -1,0 +1,1871 @@
+<%@ page language="java" contentType="text/html; charset=utf-8" pageEncoding="utf-8"%>
+<%@ page import="com.hs.webmail.controller.WmaSession" %>
+<%@ page import="com.hs.webmail.util.RequestUtils"%>
+<%@ page import="com.hs.webmail.util.PropUtil"%>
+<%-- Import	taglibs	--%>
+<%@	taglib prefix="c" uri="/WEB-INF/c.tld"%>
+<%@	taglib prefix="fmt" uri="/WEB-INF/fmt.tld"%>
+<%@	taglib prefix="fn" uri="/WEB-INF/fn.tld"%>
+<%@	taglib prefix="wma" uri="/WEB-INF/wma.tld"%>
+<jsp:useBean id="now" class="java.util.Date" />
+<fmt:setLocale value="${cookie.GWLANG.value}" />
+<fmt:setBundle basename="com.hs.webmail.resources.i18n.viewcontent" />
+<%
+	WmaSession wmasession = WmaSession.createSession(request);
+	boolean useactivex = "false".equals(PropUtil.getSystemProperty("wma.useactivex","true"));
+	request.setAttribute("useactivex",new Boolean(useactivex));
+
+	boolean useuploademl = "true".equals(PropUtil.getSystemProperty("wma.use.upload.eml","false"));
+	request.setAttribute("useuploademl",new Boolean(useuploademl));
+
+	boolean userfcresponse = "true".equals(PropUtil.getSystemProperty("wma.use.rfc.response","false"));
+	request.setAttribute("userfcresponse",new Boolean(userfcresponse));
+
+	boolean usehedwig = "true".equals(PropUtil.getSystemProperty("use_hedwig","false"));
+	request.setAttribute("usehedwig",new Boolean(usehedwig));
+
+	boolean usebbs = "true".equals(PropUtil.getSystemProperty("wma.use.bbs","true"));
+	request.setAttribute("usebbs",new Boolean(usebbs));
+
+	boolean useworknet = "true".equals(PropUtil.getSystemProperty("wma.use.worknet","false"));
+	request.setAttribute("useworknet",new Boolean(useworknet));
+
+	request.setAttribute("isadmin", wmasession.getAuthentication().isAdminFlag());
+%>
+
+<c:set var="GWTIMEZONE_ID" value='GMT'/>
+<c:choose>
+	<c:when test="${cookie.GWTIMEZONE != null && cookie.GWTIMEZONE.value !='' }">
+		<c:if test='${cookie.GWTIMEZONE.value gt 0}'>
+			<c:set var="GWTIMEZONE_ID" value="${GWTIMEZONE_ID}+" />
+		</c:if>
+		<c:set var="gmtHour">
+			<fmt:formatNumber value='${cookie.GWTIMEZONE.value/60}' type='number' maxFractionDigits='0'/>
+		</c:set>
+		<c:set var="gmtMin">
+			<fmt:formatNumber value='${cookie.GWTIMEZONE.value%60}' type='number' maxFractionDigits='0'/>
+		</c:set>
+		<c:set var="GWTIMEZONE_ID" value="${GWTIMEZONE_ID}${gmtHour}" />
+	</c:when>
+	<c:otherwise>
+		<c:set var="gmtHour">
+			<fmt:formatNumber value='9' type='number' maxFractionDigits='0'/>
+		</c:set>
+		<c:set var="gmtMin">
+			<fmt:formatNumber value='0' type='number' maxFractionDigits='0'/>
+		</c:set>
+		<c:set var="GWTIMEZONE_ID" value="GMT+${gmtHour}" />
+	</c:otherwise>
+</c:choose>
+
+<c:choose>
+	<c:when test='${gmtMin eq 0}'>
+		<c:set var="GWTIMEZONE_ID" value="${GWTIMEZONE_ID}" />
+	</c:when>
+	<c:when test='${gmtMin gt 0 and gmtMin lt 10}'>
+		<c:set var="GWTIMEZONE_ID" value=":${GWTIMEZONE_ID}0" />
+	</c:when>
+	<c:otherwise>
+		<c:set var="GWTIMEZONE_ID" value=":${GWTIMEZONE_ID}${gmtMin}" />
+	</c:otherwise>
+</c:choose>
+<c:set var="notitle">
+	<fmt:message key="list.notitle" />
+</c:set>
+<c:set var="emptyList">
+	<fmt:message key="list.nomessage"/>
+</c:set>
+<c:if test="${param.filter eq 'recent'
+					|| param.filter eq 'unread'
+					|| param.filter eq 'flagged'
+					|| param.filter eq 'priority'
+					|| param.filter eq 'secure'
+					|| param.filter eq '5daysago'
+					|| param.filter eq 'inmail'
+					|| param.filter eq 'outmail' }">
+
+	<c:set var="emptyList">
+		<fmt:message key="filter.notmatch"/>
+	</c:set>
+</c:if>
+<c:if test="${param.acton eq 'detailmessages'}">
+	<c:set var="emptyList">
+		<fmt:message key="search.notmatch"/>
+	</c:set>
+</c:if>
+
+<div>
+	<!-- 본문 영역 -->
+	<div class="container">
+		<!-- 타이틀 영역 -->
+		<div class="hgroup" id="wmaListTitle">
+			<h2 onclick="getMessages_wma();return false;" style="cursor:pointer"></h2>
+			<span class="length" style="display:none"><em></em><fmt:message key="count.item"/></span>
+			<%--ul class="tab">
+				<li><a class="selected">메일</a></li>
+				<li><a class="">파일</a></li>
+				<!--${param}-->
+			</ul--%>
+		</div>
+		<!-- // 타이틀 영역 -->
+
+		<!-- 기본 버튼 영역 -->
+		<div class="btns_area">
+			<div class="align_lf">
+				<div class="group"><!-- open 클래스 제거시 레이어 close -->
+					<span class="form"><input type="checkbox" id="chkMessageAll_wma" name="chkMessageAll_wma" onclick="selectMessageAll_wma(this);$(this).closest('div.group').removeClass('open');"/><label class="blind">select</label></span>
+					<c:if test="${folderfullname ne prefs.draftFolder}">
+						<a class="btn select" href="#" onclick="openBtnGroup_wma(this);return false;" id="optChecks" style="border:none;padding-left:0px;"></a>
+						<ul class="select_lst">
+							<li><a href="#" onclick="selectMessageOption_wma('0');$(this).closest('div.group').removeClass('open');return false;"><fmt:message key="egw.user.lable.allMail"/></a></li>
+							<li><a href="#" onclick="selectMessageOption_wma('1');$(this).closest('div.group').removeClass('open');return false;"><fmt:message key="message.unreadmessage"/></a></li>
+							<li><a href="#" onclick="selectMessageOption_wma('2');$(this).closest('div.group').removeClass('open');return false;"><fmt:message key="message.readmessage"/></a></li>
+							<li><a href="#" onclick="selectMessageOption_wma('3');$(this).closest('div.group').removeClass('open');return false;"><fmt:message key="mailbox.tree.flag.box"/></a></li>
+							<li><a href="#" onclick="selectMessageOption_wma('4');$(this).closest('div.group').removeClass('open');return false;"><fmt:message key="form.deselect"/></a></li>
+						</ul>
+					</c:if>
+				</div>
+
+				<%-- 20180807 kyc as-is 와 동일하게 버튼 정리 및 추가 Start --%>
+				<%-- 쓰기, 읽음, 이동, 복사(to-be 없음), 저장(selectbox로 이동), 삭제, 완전삭제 --%>
+				<c:if test="${folderfullname ne prefs.trashFolder and folderfullname ne prefs.draftFolder and folderfullname ne prefs.sentMailArchive and foldername ne 'SELFBOX' and  pagination.objectsCount eq 0}">
+					<div class="group">
+						<a href="#" onclick="loadUploadEML_wma();return false;" class="btn notDisabled"><fmt:message key="message.upload"/></a><%--EML업로드--%>
+					</div>
+				</c:if>
+
+				<c:if test="${folderfullname eq prefs.trashFolder}">
+					<div class="group">
+						<a href="#" onclick="deleteMessages_wma(true);return false;" class="btn"><fmt:message key="form.expunge" /><%--완전삭제--%></a>
+						<a href="#" onclick="restoreMessages_wma(false);return false;" class="btn"><fmt:message key="message.restore" /><%--복구--%></a>
+						<a href="#" onclick="submitTrashboxClear(true);return false;" class="btn"><fmt:message key="message.clear" /><%--비우기--%></a>
+					</div>
+				</c:if>
+				<c:if test="${folderfullname ne prefs.trashFolder}">
+					<div class="group">
+						<a href="#" onclick="deleteMessages_wma(false);return false;" class="btn"><fmt:message key="form.delete" /><%--삭제--%></a>
+						<a href="#" onclick="deleteMessages_wma(true);return false;" class="btn"><fmt:message key="form.expunge" /><%--완전삭제--%></a>
+					</div>
+				</c:if>
+
+				<c:if test="${folderfullname eq prefs.sentMailArchive}">
+					<div class="group">
+						<a class="btn" href="#" onclick="trackingMessages_wma(this);return false;"><fmt:message key="message.tracker" /><%--수신확인--%></a>
+						<a class="btn" href="#" onclick="rejectMessages_wma();"><fmt:message key="message.reject" /><%--회수--%></a>
+					</div>
+				</c:if>
+				<c:if test="${folderfullname ne prefs.trashFolder and folderfullname ne prefs.draftFolder and folderfullname ne prefs.sentMailArchive and foldername ne 'SELFBOX'}">
+					<div class="group">
+						<a class="btn" href="#" onclick="setMailRead_wma('all', true, true);afterReadMark_wma();return false;"><fmt:message key="message.read" /><%--읽음--%></a>
+						<a class="btn" href="#" onclick="setMailRead_wma('all', false);return false;"><fmt:message key="message.unread" /><%--안읽음--%></a>
+					</div>
+				</c:if>
+
+				<c:if test="${folderfullname eq prefs.inbox or (folderfullname ne prefs.trashFolder and folderfullname ne prefs.draftFolder) or param.path eq '_ALLBOX_'}">
+					<c:if test="${folderfullname eq prefs.inbox or param.path eq '_ALLBOX_' or fn:startsWith(folderfullname, prefs.personalFolder)}">
+						<div class="group">
+							<a href="#" onclick="replyMessage_wma(false);return false;" class="btn"><fmt:message key="message.reply" /><%--답장--%></a>
+							<a href="#" onclick="replyMessage_wma(true);return false;" class="btn"><fmt:message key="message.replyall" /><%--전체답장--%></a>
+							<c:if test="${ param.path eq '_FLAGBOX_' or folderfullname eq prefs.inbox or param.path eq '_ALLBOX_' or fn:startsWith(folderfullname, prefs.sentMailArchive) or fn:startsWith(folderfullname, prefs.personalFolder)}">
+								<a href="#" onclick="forwardMessage_wma(false);return false;" class="btn"><fmt:message key="message.forward" /><%--전달--%></a>
+							</c:if>
+						</div>
+					</c:if>
+
+					<c:if test="${folderfullname eq prefs.sentMailArchive}">
+						<div class="group">
+							<a href="#" onclick="forwardMessage_wma(false);return false;" class="btn"><fmt:message key="message.forward" /><%--전달--%></a>
+							<a href="#" onclick="submitResend();return false;" class="btn"><fmt:message key="message.resend" /><%--다시보내기--%></a>
+						</div>
+					</c:if>
+
+
+					<c:if test="${folderfullname ne prefs.draftFolder}">
+						<div class="group">
+							<!-- // open 클래스 제거시 레이어 close -->
+							<a class="btn" href="#" onclick="openBtnGroup_wma(this);return false;"><fmt:message key="message.move" />/<fmt:message key="message.copy" /><%--이동--%></a>
+							<div class="select_lst stratum">
+								<ul class="handy-scroll" id="inboxTreeForMove">
+									<li id="inboxMoveTree">
+										<a class="sub_depth" onclick="$('#privateBoxTreeForMove li.selected').removeClass('selected');$(this).parent().addClass('selected');" href="#" data-path="INBOX"><fmt:message key="inbox.name" /></a>
+									</li>
+								</ul>
+								<ul class="handy-scroll" id="privateBoxTreeForMove"></ul>
+								<div class="btns_area align_ct border">
+									<a href="#" class="btn half" onclick="moveMessages_wma();return false;"><fmt:message key="message.move" /><%--이동--%></a>
+									<a href="#" class="btn half" onclick="copyMessages_wma();return false;"><fmt:message key="message.copy" /><%--복사--%></a>
+								</div>
+							</div>
+						</div>
+					</c:if>
+				</c:if>
+
+				<div class="group">
+					<a class="btn <c:if test="${pagination.objectsCount gt 0}">notDisabled</c:if>" href="#" onclick="openBtnGroup_wma(this);return false;" id="optFunctionBtn"><fmt:message key="view.menu.extra.function"/><%--추가기능--%></a>
+					<c:if test="${fn:length(messages) gt 0}">
+						<ul class="select_lst">
+							<c:if test="${usebbs}">
+								<li><a href="#" onclick="forwardBBS(true);return false;"><fmt:message key="message.fowardtobbs" /></a></li>
+							</c:if>
+							<c:if test="${useworknet}">
+								<li><a href="#" onclick="forwardWorkNet();return false;"><fmt:message key="message.fowardtoworknet" /></a></li>
+							</c:if>
+							<li><a href="#" onclick="saveMessages_wma();return false;"><fmt:message key="message.download" /></a></li><%--PC저장--%>
+							<li><a href="#" onclick="loadUploadEML_wma();return false;"><fmt:message key="message.upload"/></a></li><%--EML업로드--%>
+							<li><a href="#" onclick="printExcelList_wma();return false;"><fmt:message key="message.excelview"/></a></li><%--엑셀다운로드--%>
+							<li><a href="#" onclick="printList_wma();return false;"><fmt:message key="list.print"/></a></li><%--인쇄--%>
+						</ul>
+					</c:if>
+				</div>
+				<c:if test="${(folderfullname ne prefs.draftFolder) and (param.path ne '_ALLBOX_') and (param.path ne '_FLAGBOX_')}">
+					<div class="group">
+						<span><fmt:message key="egw.user.lable.filter"/> : </span>
+						<div class="selectbox">
+							<select id="optFilters" <c:if test="${fn:length(messages) eq 0 and empty param.filter}">disabled</c:if>>
+								<option value=""><fmt:message key="messages.filter.all"/>&nbsp;&nbsp;&nbsp;&nbsp;</option>
+								<option value="unread"><fmt:message key="messages.filter.unread"/></option>
+								<option value="flagged"><fmt:message key="messages.filter.flagged"/></option>
+								<c:if test="${foldername ne prefs.sentMailArchive and userrecentfilter}">
+									<option value="recent"><fmt:message key="icon.recent"/></option>
+								</c:if>
+								<c:if test="${userpriorityhighfilter}">
+									<option value="priority"><fmt:message key="messages.filter.priority"/></option>
+								</c:if>
+								<c:if test="${usersecurefilter}">
+									<option value="secure"><fmt:message key="messages.filter.secure"/></option>
+								</c:if>
+								<c:if test="${user5daysfilter}">
+									<option value="5daysago"><fmt:message key="messages.filter.5daysago"/></option>
+								</c:if>
+								<!-- <option value="cc">참조</option> -->
+								<c:if test="${foldername ne prefs.sentMailArchive and useouterfilter}">
+									<option value="outmail"><fmt:message key="messages.filter.outmail"/></option>
+								</c:if>
+								<c:if test="${foldername ne prefs.sentMailArchive and useinnerfilter}">
+									<option value="inmail"><fmt:message key="messages.filter.inmail"/></option>
+								</c:if>
+							</select>
+						</div>
+					</div>
+				</c:if>
+			</div>
+			<div class="align_rg">
+				<%-- 연관메일 --%>
+				<c:if test="${!(folderfullname eq prefs.draftFolder or param.acton eq 'filtermessages' or param.acton eq 'detailmessages' or param.acton eq 'simplemessages' or folderfullname eq 'FORMBOX' or foldername eq 'SELFBOX')}">
+					<a href="#" id="btnThread_wma" onclick="setList_wma(this);return false;" class="ico_btn comment" title='<fmt:message key="egw.user.button.viewthread.information"/>'><fmt:message key="egw.user.button.viewthread"/></a>
+				</c:if>
+				<%-- 연관메일 --%>
+				<c:if test="${folderfullname ne prefs.draftFolder}">
+					<a href="#" id="btnListViewStyle_wma" onclick="changeListStyle_wma();return false;" data-view="list" class="ico_btn view_lst on" title='<fmt:message key="egw.user.button.viewlist"/>'></a>
+				</c:if>
+				<!-- 필터 : 셀렉트 UI 결정 후, ui 수정 -->
+				<div class="selectbox page_num">
+					<select id="optPageTake">
+						<option value='10'> 10 </option>
+						<option value='15'> 15 </option>
+						<option value='20'> 20 </option>
+						<option value='30'> 30 </option>
+						<option value='40'> 40 </option>
+						<option value='50'> 50 </option>
+					</select>
+				</div>
+			</div>
+			<div class="new_lst_info">
+				<c:if test="${viewcount and param.acton ne 'detailmessages'}">
+					<span class="count_new">
+						<span class="new" id="unread">${unreadcount}</span>
+						<span>/</span>
+						<span class="total" id="total">${pagination.objectsCount}</span>
+					</span>
+				</c:if>
+				<a onclick="onlineDiv.help('mail', '101')" class="btn dsp_none" id='onlinehelpbtn_wma'><fmt:message key="message.help.word"/></a>
+				<a class="ico_btn rfsh" href="#" onclick="getMessages_wma();return false;" title='<fmt:message key="message.reload"/>'><fmt:message key="message.reload"/></a>
+				<a class="btn_d_search" href="#" onclick="openSearchBtn_wma(this);return false;" title='<fmt:message key="search"/>'><fmt:message key="search"/></a>
+				<!-- search layer -->
+				<div class="d_srch_layer">
+					<div class="group">
+						<a class="btn on" tabIndex="0" id="tab_search_simple_wma" onkeypress="if(event.keyCode == '13') $(this).click(); " onclick="changeSearchTab(this, 's');"><fmt:message key="search"/></a>
+						<a class="btn" tabIndex="0" id="tab_search_detail_wma" onkeypress="if(event.keyCode == '13') $(this).click(); " onclick="changeSearchTab(this, 'd');"><fmt:message key="search.detail.title"/></a>
+					</div>
+					<!-- simple srch layer : 간편 탭 -->
+					<div class="s_cont easy open">
+						<div class="input_group mg_t_15 has_select has_btn">
+							<div class="selectbox" style="width:103px;">
+								<select id='simple_search_items'>
+									<option value="default">help_txt</option>
+									<%-- 20180807 kyc 명칭변경 태그 -> 메모 Start --%>
+									<option value="tag"><fmt:message key="custom.wma.mes3" /></option>
+									<%-- 20180807 kyc 명칭변경 태그 -> 메모 End --%>
+									<option value="file"><fmt:message key="message.attachment.name" /></option>
+								</select>
+							</div>
+							<input type="text" name="term" id="term" class="basic_input" placeholder="" onKeyPress="if(event.keyCode == 13){simpleSearchMessages();return false;}">
+							<a class="ico search" onclick="simpleSearchMessages();return false;" href="#" title='<fmt:message key="search"/>'><fmt:message key="search"/></a>
+						</div>
+					</div>
+					<div>
+						<!-- detail srch layer : 상세 탭-->
+						<div class="s_cont detail">
+							<div class="form_table">
+								<table>
+									<colgroup>
+										<col style="width:77px;">
+										<col width="*">
+									</colgroup>
+									<tbody>
+									<tr>
+										<th><fmt:message key="folder.folder"/></th>
+										<td>
+											<div class="input_group srch_org">
+												<span class="text_wrap single" id="pathText" name="pathText" title=""  onfocus="blur()" readonly></span>
+												<a class="ico group" id="selectBoxOfDS" onclick="folderTreePopup();"><fmt:message key="folder.select.abbr"/></a>
+												<c:choose>
+													<c:when test="${'_ALLBOX_' eq param.path}">
+														<input type="hidden" id="path" name="path" value='<c:out value="${param.path}" />,' />
+														<input type="hidden" id="allmailbox" name="allmailbox" value="true"/>
+													</c:when>
+													<c:otherwise>
+														<input type="hidden" id="path" name="path" value='<c:out value="${param.path}" />' />
+														<input type="hidden" id="allmailbox" name="allmailbox" value="false"/>
+													</c:otherwise>
+												</c:choose>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<th><fmt:message key="compose.subject"/></th>
+										<td class="text_input">
+											<input type="text" id="subjectterm" name="subjectterm" value="" class="border_input" placeholder="">
+										</td>
+									</tr>
+									<tr>
+										<%-- 20180807 kyc 명칭변경 보낸 사람 -> 보낸이 Start --%>
+										<th><fmt:message key="message.from"/></th>
+										<%-- 20180807 kyc 명칭변경 보낸 사람 -> 보낸이 End --%>
+										<td>
+											<div class="input_group has_btn">
+												<div class="token-input modify" id="hwfromArea">
+													<input type="text" tabindex="1" id="senderterm" name="senderterm" onchange="isChanged=true;" value=""/>
+													<tester style="position: absolute; top: -9999px; left: -9999px; width: auto; font-size: 13.3333px; font-family: Arial; font-weight: normal; letter-spacing: normal; white-space: nowrap;"></tester>
+													<input type="button" class="ico_btn small add" id="recipient_from" onclick="popupOrg_DetailSearch_wma('to');" title='<fmt:message key="org.organogram"/>'>
+												</div>
+												<input type="text" id="sendertermmail" name="sendertermmail" style="display: none;">
+												<input type="text" id="senderterm_aug" style="display: none;">
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<%-- 20180807 kyc 명칭변경 받는 사람 -> 받는이 Start --%>
+										<th><fmt:message key="message.to"/></th>
+										<%-- 20180807 kyc 명칭변경 받는 사람 -> 받는이 End --%>
+										<td>
+											<div class="input_group has_btn">
+												<div class="token-input modify" id="hwtoArea">
+													<input type="text" tabindex="2" id="torecterm" name="torecterm" onchange="isChanged=true;" value=""/>
+													<tester style="position: absolute; top: -9999px; left: -9999px; width: auto; font-size: 13.3333px; font-family: Arial; font-weight: normal; letter-spacing: normal; white-space: nowrap;"></tester>
+													<input type="button" class="ico_btn small add" id="recipient_to" onclick="popupOrg_DetailSearch_wma('cc');" title='<fmt:message key="org.organogram"/>'>
+												</div>
+												<input type="text" id="torectermmail" name="torectermmail" style="display: none;">
+												<input type="text" id="torecterm_aug" style="display: none;">
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<%-- 20180807 kyc 명칭변경 참조 -> 참조인 Start --%>
+										<th><fmt:message key="compose.cc"/></th>
+										<%-- 20180807 kyc 명칭변경 참조 -> 참조인 End --%>
+										<td>
+											<div class="input_group has_btn">
+												<div class="token-input modify" id="hwccArea">
+													<input type="text" tabindex="3" id="ccrecterm" name="ccrecterm" onchange="isChanged=true;" value="">
+													<tester style="position: absolute; top: -9999px; left: -9999px; width: auto; font-size: 13.3333px; font-family: Arial; font-weight: normal; letter-spacing: normal; white-space: nowrap;"></tester>
+													<input type="button" class="ico_btn small add" id="recipient_cc" onclick="popupOrg_DetailSearch_wma('bcc');" title='<fmt:message key="org.organogram"/>'>
+												</div>
+												<input type="text" id="ccrectermmail" name="ccrectermmail" style="display: none;">
+												<input type="text" id="ccrecterm_aug" style="display: none;">
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<th><fmt:message key="custom.wma.mes3" /></th>
+										<td class="text_input">
+											<input type="text" id="tagnameterm_wma" name="tagnameterm" value="" class="border_input" placeholder="">
+										</td>
+									</tr>
+									<tr>
+										<th><fmt:message key="message.attachment.name" /></th>
+										<td class="text_input">
+											<input type="text" id="filenameterm_wma" name="filenameterm" value="" class="border_input" placeholder="">
+										</td>
+									</tr>
+									<tr>
+										<th><fmt:message key="period_term"/></th>
+										<td>
+											<div class="input_group has_select">
+												<div class="selectbox" style="width:90px">
+													<select id="date" name="date" onchange="updateDateUI(this)">
+														<option value="a"><fmt:message key="messages.filter.all" /></option>
+														<option value="w" selected><fmt:message key="search.condition.week.desc" /></option>
+														<option value="2w"><fmt:message key="search.condition.2weeks.desc" /></option>
+														<option value="m"><fmt:message key="search.condition.month.desc" /></option>
+														<option value="s"><fmt:message key="search.condition.date.custom" /></option>
+													</select>
+												</div>
+												<div class="datepic_area">
+													<div class="date_box">
+														<input type="text" class="date_input" id="fromdateterm" name="fromdateterm" value="" style="width:92px;"
+															   onclick="selectDiv.setValue('select#date', 's');dateDiv.onfocus(event)"
+															   onfocusout="blurDateInput_wma(this, calendar_wrong_format, true, 'fromdateterm', 'todateterm', '<fmt:message key="calendar.alert.wrong.fromdate"/>');"
+															   onkeydown="dateDiv.onlyNumber(event)"
+															   onkeyup="keyupDateInput_wma(event, calendar_wrong_format, true, 'fromdateterm', 'todateterm', '<fmt:message key="calendar.alert.wrong.fromdate"/>');">
+														<a class="date_btn" tabindex="0" id="fromdateterm_calendar" onclick="selectDiv.setValue('select#date', 's');openDatePicker_wma('fromdateterm', false, 'fromdateterm', 'todateterm', '<fmt:message key="calendar.alert.wrong.fromdate"/>');" onkeydown="if(event.keyCode == 13){$(this).trigger('click');}" title='<fmt:message key="calendar.name"/>'><fmt:message key="calendar.name"/></a>
+													</div>
+													~
+													<div class="date_box">
+														<input type="text" class="date_input" id="todateterm" name="todateterm" value="" style="width:92px;"
+															   onclick="selectDiv.setValue('select#date', 's');dateDiv.onfocus(event)"
+															   onfocusout="blurDateInput_wma(this, calendar_wrong_format, true, 'fromdateterm', 'todateterm', '<fmt:message key="calendar.alert.wrong.todate"/>');"
+															   onkeydown="dateDiv.onlyNumber(event)"
+															   onkeyup="keyupDateInput_wma(event, calendar_wrong_format, true, 'fromdateterm', 'todateterm', '<fmt:message key="calendar.alert.wrong.todate"/>');">
+														<a class="date_btn" tabIndex="0" id="todateterm_calendar" onclick="selectDiv.setValue('select#date', 's');openDatePicker_wma('todateterm', false, 'fromdateterm', 'todateterm', '<fmt:message key="calendar.alert.wrong.todate"/>');" onkeydown="if(event.keyCode == 13){$(this).trigger('click');}" title='<fmt:message key="calendar.name"/>'><fmt:message key="calendar.name"/></a>
+													</div>
+												</div>
+											</div>
+										</td>
+									</tr>
+									<tr class="">
+										<th><fmt:message key="egw.user.lable.status"/></th>
+										<td>
+											<div class="">
+												<span class="form"><input type="checkbox" id="flagseen"><label for="flagseen"><fmt:message key="message.readmessage"/></label></span>
+												<span class="form"><input type="checkbox" id="flagunread"><label for="flagunread"><fmt:message key="count.unread"/></label></span>
+												<span class="form"><input type="checkbox" id="flagreply"><label for="flagreply"><fmt:message key="message.search.answer"/></label></span>
+											</div>
+										</td>
+									</tr>
+									<input type="hidden" id="flagall" name="checkFlag" value="true" />
+									</tbody>
+								</table>
+							</div>
+						</div>
+					</div>
+					<div class="btns_area align_rg" id="tab_search_btn_area_wma" style="display:none">
+						<div class="align_lf">
+							<a tabIndex="0" class="action_btn" onclick="defaultDS()"><fmt:message key="custom.wma.mes11"/></a>
+						</div>
+						<div class="align_rg">
+							<a tabIndex="0" class="action_btn" onclick="doSubmit();return false;"><fmt:message key="search"/></a>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<!-- // 기본 버튼 영역 -->
+
+		<!-- 리스트 영역 simple -->
+		<dl class="thread_lst" id="listAreaSimple_wma" style="display: none">
+			<dt>
+				<c:set var="default_sort" value=""/>
+				<c:set var="rec_sort" value="${folderfullname == prefs.sentMailArchive ? 'OrderToMessages' : 'OrderFromMessages' }"/>
+				<span class="sub_info">
+					<p class="tit"><fmt:message key="egw.user.lable.status" />
+					<a style="cursor:pointer" onclick="javascript:helpIcon_wma();" class="information"></a></p>
+				</span>
+				<span class="person ${(param.ordername eq rec_sort) ? ((param.asc) ? 'descend' : 'ascend') : default_sort}">
+					<a href="#" onclick="sort_wma('${rec_sort}');return false;">
+						<c:choose>
+							<c:when test="${folderfullname == prefs.sentMailArchive ||	folderfullname	== prefs.draftFolder || folderfullname == 'FORMBOX'}">
+								<fmt:message key="message.to" />
+							</c:when>
+							<c:otherwise>
+								<fmt:message key="message.from" />
+							</c:otherwise>
+						</c:choose>
+					</a>
+				</span>
+				<span class="title ${(param.ordername eq 'OrderSubjectMessages') ? ((param.asc) ? 'descend' : 'ascend') : default_sort}">
+					<a href="#" onclick="sort_wma('OrderSubjectMessages');return false;">
+						<fmt:message key="message.subject" /><%--제목--%>
+					</a>
+				</span>
+				<span class="date ${(param.ordername eq 'OrderDateMessages') ? ((param.asc) ? 'descend' : 'ascend') : default_sort}">
+					<a href="#" onclick="sort_wma('OrderDateMessages');return false;">
+						<c:choose>
+							<c:when test="${folderfullname == prefs.sentMailArchive}">
+								<fmt:message key="message.senddate" /><%--보낸날짜--%>
+							</c:when>
+							<c:when test="${folderfullname == prefs.trashFolder}">
+								<fmt:message key="message.date" /><%--날짜--%>
+							</c:when>
+							<c:when test="${folderfullname == prefs.draftFolder or folderfullname == 'FORMBOX'}">
+								<fmt:message key="message.savedate" /><%--저장날짜--%>
+							</c:when>
+							<c:otherwise>
+								<fmt:message key="message.receivedate" /><%--받은--%>
+							</c:otherwise>
+						</c:choose>
+					</a>
+				</span>
+				<span class="size ${(param.ordername eq 'OrderSizingMessages') ? ((param.asc) ? 'descend' : 'ascend') : default_sort}">
+					<a href="#" onclick="sort_wma('OrderSizingMessages');return false;"><fmt:message key="message.size" /></a>
+				</span>
+			</dt> <!--// 리스트 헤더 영역 -->
+			<dd class="scroll_area handy-scroll" id="generalListArea_wma">
+				<ul>
+					<c:choose>
+						<c:when test="${fn:length(messages) gt 0}">
+							<c:forEach var="msg" items="${messages}" varStatus="status">
+								<li id="liMessage_wma_${msg.number}" class='${msg.read ? "" : "unread"}' onclick="browse_wma(this);return false;"
+									data-boxid="${msg.folderFullName}"
+									data-msgnumber="${msg.number}"
+									data-secure="${msg.secure}"
+									data-deleted="${msg.deleted}"
+									data-errorflag="${msg.errorMailFlag}"
+									data-mid="${msg.messageID}"
+									data-draft="${msg.draft}" ><!-- ${msg.recent}, ${msg.read}, ${msg.forward} , ${msg.answered}, ${msg.canceled} -->
+									<div class="sub_info ui-draggable" onclick="event.stopPropagation();">
+										<span class="form"><input type="checkbox" id="chkMessage_wma_${msg.number}" name="chkMessage_wma" value="${msg.number}" data-mid='${msg.messageID}' onclick="selectMessage_wma(this);event.stopPropagation();" /><label class="blind"><fmt:message key="egw.user.lable.selectMail"/></label></span>
+										<c:if test="${folderfullname ne prefs.draftFolder and folderfullname ne prefs.trashFolder}">
+											<span class="form flag" title="<fmt:message key="egw.user.lable.flagged"/>"><input type="checkbox" name="chkFlag_wma" ${msg.flagged ? "checked" : ""} value="${msg.number}" onclick="setFlagMessage_wma(this);event.stopPropagation();" /><label class="blind"><fmt:message key="egw.user.lable.flagged"/></label></span>
+										</c:if>
+										<c:set var="icons" value="ico_mail" />
+										<c:if test="${msg.recent}">
+											<c:set var="icons" value="${icons} new" />
+										</c:if>
+										<c:if test="${msg.read}">
+											<c:set var="icons" value="${icons} open " />
+										</c:if>
+										<c:if test="${msg.forward}">
+											<c:set var="icons" value="${icons} fw" />
+										</c:if>
+										<c:if test="${msg.answered}">
+											<c:set var="icons" value="${icons} reply" />
+										</c:if>
+										<c:if test="${msg.canceled}">
+											<c:set var="icons" value="${icons} wd" />
+										</c:if>
+											<%-- <c:set var="icons" value="${icons} pointer" /> --%>
+										<c:choose>
+											<c:when test="${msg.canceled}"><fmt:message key="icon.cancel" var="icons_title"/></c:when>
+											<c:when test="${msg.answered}"><fmt:message key="icon.reply" var="icons_title"/></c:when>
+											<c:when test="${msg.forward}"><fmt:message key="icon.forward" var="icons_title"/></c:when>
+											<c:when test="${msg.read}"><fmt:message key="icon.read" var="icons_title"/></c:when>
+											<c:when test="${msg.recent}"><fmt:message key="icon.recent" var="icons_title"/></c:when>
+											<c:otherwise><fmt:message key="icon.unread" var="icons_title"/></c:otherwise>
+										</c:choose>
+										<span class="${icons}" onclick="setMailRead_wma(this)" title="<c:out value="${icons_title}"/>" data-num="${msg.number}" data-mid="${msg.messageID}"></span>
+										<span class="dsp_none" id='checkNumberData-<c:out value="${msg.number}"/>'
+											  data-sender='<c:out value="${msg.fromID}"/>'
+											  data-canceled='<c:out value="${msg.canceled}"/>'
+											  data-mid='<c:out value="${msg.messageID}"/>'
+											  data-folder='<wma:out value="${msg.originalFolder}"/>'
+											  data-sender_mail='<wma:out value="${msg.from}" default="&nbsp;"/>'
+											  data-sender_name='<wma:out value="${msg.from}" rfc822="true" default="" />'
+										/>
+										<c:if test="${folderfullname ne prefs.draftFolder}">
+											<a id="tag_icon_${msg.messageID}" onclick="showMailTag(this);event.stopPropagation();" class="ico_tag <c:if test="${!msg.tagFlag}"> add</c:if>" title="<c:if test="${!msg.tagFlag}"><fmt:message key="tag.detail.add"/></c:if><c:if test="${msg.tagFlag}">${msg.tags}</c:if>" href="#"
+											   data-boxid="${msg.folderFullName}"
+											   data-msgnumber="${msg.number}"
+											   data-mid="${msg.messageID}"
+											>tag</a>
+										</c:if>
+									</div>
+									<div class="person">
+										<span class="badge vip dsp_none" >VIP</span>
+										<c:choose>
+											<c:when test="${folderfullname eq prefs.draftFolder}">
+												<c:set var="recipient">
+													<wma:exout value="${msg.to}" rfc822="true"  />
+												</c:set>
+												<c:choose>
+													<c:when test="${not empty recipient}">
+														<c:forTokens items="${recipient}" delims=",;" var="current" varStatus="status">
+															<wma:exout value="${current}" default="&nbsp;"  /><c:if test="${not status.last}">,</c:if>
+														</c:forTokens>
+													</c:when>
+													<c:when test="${not empty msg.senderList.toList}">
+														<c:forEach items="${msg.senderList.toList}" var="current" varStatus="status">
+															<wma:exout value="${current[1]}" default="&nbsp;"  /><c:if test="${not status.last}">,</c:if>
+														</c:forEach>
+													</c:when>
+													<c:otherwise>&nbsp;</c:otherwise>
+												</c:choose>
+											</c:when>
+											<c:when test="${(folderfullname eq prefs.sentMailArchive or folderfullname == 'FORMBOX') and not empty msg.handwriteTo}">
+												<c:set var="recipient">
+													<c:forTokens items="${msg.handwriteTo}" delims=",;" var="current" varStatus="status">
+														<c:set var="recType" value="${fn:trim(msg.senderList.toList[status.index][2])}"/>
+														<c:if test="${empty recType}">
+															<c:set var="recType" value="@"/>
+														</c:if>
+														<c:set var="displayFromName">
+															<wma:out value="${fn:trim(current)}" rfc822="true" default="" />
+														</c:set>
+														<c:choose>
+															<c:when test="${recType eq '@' or recType eq '^'}">
+															<span class="name"><a href="#" onclick="_showUserContextMenu_wma(this, event)" value="${msg.number}" data-from="${msg.senderList.toList[status.index][1]}" data-fromid="${msg.senderList.toList[status.index][0]}" data-name="${displayFromName}" >
+																${displayFromName}<c:if test="${not status.last}">,</c:if>
+															</a></span>
+															</c:when>
+															<c:otherwise>
+																<span class="name">
+																		${displayFromName}<c:if test="${not status.last}">,</c:if>
+																</span>
+															</c:otherwise>
+														</c:choose>
+													</c:forTokens>
+												</c:set>
+												<c:choose>
+													<c:when test="${not empty recipient}">
+														<c:forTokens items="${recipient}" delims=",;" var="current" varStatus="status">
+															<wma:exout value="${fn:trim(current)}" default="" /><c:if test="${not status.last}">,</c:if>
+														</c:forTokens>
+													</c:when>
+													<c:otherwise>(<fmt:message key="message.address.unknown"/>)</c:otherwise>
+												</c:choose>
+											</c:when>
+											<c:otherwise>
+												<c:choose>
+													<c:when test="${msg.internalMail and not empty msg.fromID}">
+														<c:choose>
+															<c:when test="${not empty msg.orgFromName}">
+																<c:set var="displayFromName">
+																	<wma:out value="${msg.orgFromName}" rfc822="true" default="" />
+																</c:set>
+															</c:when>
+															<c:otherwise>
+																<c:set var="displayFromName">
+																	<wma:out value="${msg.from}" rfc822="true" default="" />
+																</c:set>
+															</c:otherwise>
+														</c:choose>
+														<span class="name"><a href="#" onclick="_showUserContextMenu_wma(this, event)" value="${msg.number}" data-from="${msg.from}" data-fromid="${msg.fromID}" data-name="${displayFromName}" >
+																${displayFromName}
+														</a></span>
+													</c:when>
+													<c:otherwise>
+														<c:choose>
+															<c:when test="${not empty msg.orgFromName}">
+																<wma:out value="${msg.orgFromName}" rfc822="true" default="&nbsp;" /><c:if test="${not status.last}">,</c:if>
+															</c:when>
+															<c:otherwise>
+																<c:set var="displayFromName">
+																	<wma:out value="${msg.from}" rfc822="true" default="" />
+																</c:set>
+																<span class="name"><a href="#" onclick="_showUserContextMenu_wma(this, event)" value="${msg.number}" data-from="${msg.from}" data-fromid="${msg.fromID}" data-name="${displayFromName}" >
+																${displayFromName}
+																<input type="hidden" id="sender_num" value="${msg.number}" />
+															</a></span>
+															</c:otherwise>
+														</c:choose>
+													</c:otherwise>
+												</c:choose>
+											</c:otherwise>
+										</c:choose>
+										<c:if test="${msg.threadCount > 1}">
+											<a class="thread_btn" onclick="toggleThreadList(this);event.stopPropagation();" title="<fmt:message key="egw.user.lable.expandAssociatedMail"/>" data-num="${msg.number}" data-threadid="<c:out value="${msg.threadID}"/>"><span><c:out value="${msg.threadCount}"/></span></a>
+										</c:if>
+									</div>
+									<div class="title" title="<c:out value='${msg.subject}' default='${notitle}' escapeXml='false'/>" >
+										<!-- // 폴더 구분 -->
+										<c:if test="${(param.acton eq 'detailmessages' or param.path eq '_ALLBOX_' or param.path eq '_FLAGBOX_') and !msg.errorMailFlag}">
+										<span class="locate">
+											<c:choose>
+												<c:when test="${msg.folderName eq 'INBOX'}">
+													<fmt:message key="inbox.name" />
+												</c:when>
+												<c:when test="${msg.folderName eq 'SELFBOX'}">
+													<fmt:message key="inbox.mymail" />
+												</c:when>
+												<c:when test="${msg.folderName eq 'FORMBOX'}">
+													<fmt:message key="mail.type.formbox" />
+												</c:when>
+												<c:when test="${msg.folderName eq '보낸 편지함'}">
+													<fmt:message key="preferences.outbox" />
+												</c:when>
+												<c:otherwise>
+													${msg.folderName}
+												</c:otherwise>
+											</c:choose>
+										</span>
+										</c:if>
+										<!-- // 뱃지 -->
+										<c:if test="${msg.multipart}">
+											<span class="ico file" title="<fmt:message key="icon.attachments"/>"></span>
+										</c:if>
+										<c:if test="${msg.priority eq 1}">
+											<span class="badge emergency"><fmt:message key="compose.emergency" /></span>
+										</c:if>
+										<c:if test="${msg.secure}">
+											<span class="badge security"><fmt:message key="compose.secure" /></span>
+										</c:if>
+										<a class="subject" href="#">
+											<c:choose>
+												<c:when test="${msg.errorMailFlag}">
+													<fmt:message key="message.errormail.title" />
+												</c:when>
+												<c:otherwise>
+													<c:out value='${msg.subject}' default='${notitle}' escapeXml="false"/>
+												</c:otherwise>
+											</c:choose>
+										</a>
+										<c:if test="${!msg.errorMailFlag and !msg.draft and 'false' eq prefs.popupOnRead}">
+											<a class="ico pop_up" href="#" onclick="browse_wma(this, true);event.stopPropagation();return false;" title="<fmt:message key="message.popup"/>"
+											   data-boxid="${msg.folderFullName}"
+											   data-msgnumber="${msg.number}"
+											   data-secure="${msg.secure}"
+											   data-deleted="${msg.deleted}"
+											   data-errorflag="${msg.errorMailFlag}"
+											   data-mid="${msg.messageID}"
+											   data-draft="${msg.draft}"></a>
+										</c:if>
+									</div>
+									<span class="date" data-date='<c:out value="${msg.date}"/>'>
+								<fmt:formatDate var="cYear" value="${now}" timeZone="${GWTIMEZONE_ID}" pattern="yyyy" />
+								<fmt:formatDate var="cMonth" value="${now}" timeZone="${GWTIMEZONE_ID}" pattern="MM" />
+								<fmt:formatDate var="cDate" value="${now}" timeZone="${GWTIMEZONE_ID}" pattern="dd" />
+								<fmt:formatDate var="mYear" value="${msg.date}" timeZone="${GWTIMEZONE_ID}" pattern="yyyy" />
+								<fmt:formatDate var="mMonth" value="${msg.date}" timeZone="${GWTIMEZONE_ID}" pattern="MM" />
+								<fmt:formatDate var="mDate" value="${msg.date}" timeZone="${GWTIMEZONE_ID}" pattern="dd" />
+								<fmt:formatDate var="mTime" value="${msg.date}" timeZone="${GWTIMEZONE_ID}" pattern="HH:mm" />
+								<%-- 20180726 kyc Start
+								<c:choose>
+									<c:when test="${cYear ne mYear}">
+										<c:out value="${mYear}"/>-<c:out value="${mMonth}"/>-<c:out value="${mDate}"/>
+									</c:when>
+									<c:when test="${cMonth ne mMonth}">
+										<c:out value="${mMonth}"/>-<c:out value="${mDate}"/>
+									</c:when>
+									<c:when test="${cDate ne mDate}">
+										<c:out value="${mMonth}"/>-<c:out value="${mDate}"/>
+									</c:when>
+									<c:otherwise> </c:otherwise>
+								</c:choose>
+								20180726 kyc End --%>
+								<c:out value="${mYear}"/>-<c:out value="${mMonth}"/>-<c:out value="${mDate}"/> <c:out value="${mTime}" />
+								</span>
+									<span class="size" title="<c:out value='${msg.subject}' default='${notitle}' escapeXml='false'/>" >
+										<c:set scope="page" var="targetSize" value="${msg.size}"/>
+										<%@ include file="includes/data_size_conversion.jsp"%>
+									</span>
+								</li>
+							</c:forEach>
+						</c:when>
+						<c:otherwise>
+							<c:choose>
+								<c:when test="${param.path eq 'INBOX'}">
+									<li class="unread"><div class="title align_ct" style="width:99%;max-width:100%;height:100%;" align="center"><c:out value="${emptyList}"/></div></li><%-- 11월 12일 이전 메일은 구포탈 받은편지함에서 확인 바랍니다.<br>(Please check mail previous 11/12 at old portal mailbox) --%>
+								</c:when>
+								<c:otherwise>
+									<li class="unread"><div class="title align_ct" style="width:99%;max-width:100%"><c:out value="${emptyList}"/></div></li>
+								</c:otherwise>
+							</c:choose>
+						</c:otherwise>
+					</c:choose>
+				</ul>
+			</dd>
+			<dd>
+				<div class="paginate_area">
+					<div class="paginate">
+						<c:choose>
+							<c:when test="${pagination.prevPageEnabled}">
+								<a class="first" href="#" onclick="gotoPage_wma('${pagination.firstPage}');return false;"><fmt:message key="egw.user.lable.firstPage"/></a>
+								<a class="pre" href="#" onclick="gotoPage_wma('${pagination.firstPageForWindow-1}');return false;"><fmt:message key="egw.user.lable.previousPage"/></a>
+							</c:when>
+							<c:otherwise>
+								<a class="first disabled">first</a>
+								<a class="pre disabled">back</a>
+							</c:otherwise>
+						</c:choose>
+						<!-- // 1페이지가 아닌경우, disabled 삭제 -->
+						<c:forEach var="p" begin="${pagination.firstPageForWindow}" end="${pagination.lastPageForWindow}">
+							<c:choose>
+								<c:when test="${p == pagination.currentPage}">
+									<a class="selected">${p + 1}</a>
+								</c:when>
+								<c:otherwise>
+									<a href="#" onclick="gotoPage_wma('${p}');return false;" >${p + 1}</a>
+								</c:otherwise>
+							</c:choose>
+						</c:forEach>
+						<c:choose>
+							<c:when test="${pagination.nextPageEnabled}">
+								<a class="next" href="#" onclick="gotoPage_wma('${pagination.lastPageForWindow+1}');return false;"><fmt:message key="egw.user.lable.nextPage"/></a>
+								<a class="last" href="#" onclick="gotoPage_wma('${pagination.lastPage}');return false;"><fmt:message key="egw.user.lable.lastPage"/></a>
+							</c:when>
+							<c:otherwise>
+								<a class="next disabled">next</a>
+								<a class="last disabled">last</a>
+							</c:otherwise>
+						</c:choose>
+					</div>
+					<div class="page_num">
+						<input type="text" name="targetPage" id="targetPage" value="${pagination.currentPage + 1}" onKeyPress="if(event.keyCode == 13){gotoPage_wma(this.value-1);return false;}"> /
+						${pagination.lastPage + 1}
+					</div>
+					<input type="hidden" id="lastpage" name="lastpage" value="<c:out value="${pagination.lastPage}"/>"/>
+				</div>
+			</dd>
+		</dl>
+		<!-- // 리스트 영역 simple -->
+
+		<!-- 리스트 영역 분할 -->
+		<div class="lst_area vertical_ui" id="listAreaDiv_wma" style="display: none">
+			<div class="vertical_lf">
+				<!-- 좌측 리스트  -->
+				<dl class="thread_lst">
+					<dt class="dsp_none"></dt> <!-- 리스트 헤더 영역 -->
+					<dd class="scroll_area handy-scroll">
+						<ul>
+							<c:choose>
+								<c:when test="${fn:length(messages) gt 0}">
+									<c:forEach var="msg" items="${messages}" varStatus="status">
+										<li id="liMessage_wma_${msg.number}" class='${msg.read ? "" : "unread"}' onclick="browse_wma(this);return false;"
+											data-boxid="${msg.folderFullName}"
+											data-msgnumber="${msg.number}"
+											data-secure="${msg.secure}"
+											data-deleted="${msg.deleted}"
+											data-errorflag="${msg.errorMailFlag}"
+											data-draft="${msg.draft}"
+											data-mid="${msg.messageID}"><!-- ${msg.read}, ${msg.forward} , ${msg.answered} -->
+											<div class="sub_info ui-draggable" onclick="event.stopPropagation();">
+												<span class="form"><input type="checkbox" id="chkMessage_wma_${msg.number}" name="chkMessage_wma" value="${msg.number}" data-mid='${msg.messageID}' onclick="selectMessage_wma(this);event.stopPropagation();" /><label class="blind"><fmt:message key="egw.user.lable.selectMail"/></label></span>
+												<c:if test="${folderfullname ne prefs.draftFolder and folderfullname ne prefs.trashFolder}">
+													<span class="form flag" title="<fmt:message key="egw.user.lable.flagged"/>"><input type="checkbox" name="chkFlag_wma" ${msg.flagged ? "checked" : ""} value="${msg.number}" onclick="setFlagMessage_wma(this);event.stopPropagation();" /><label class="blind"><fmt:message key="egw.user.lable.flagged"/></label></span>
+												</c:if>
+												<c:set var="icons" value="ico_mail" />
+												<c:if test="${msg.recent}">
+													<c:set var="icons" value="${icons} new" />
+												</c:if>
+												<c:if test="${msg.read}">
+													<c:set var="icons" value="${icons} open" />
+												</c:if>
+												<c:if test="${msg.forward}">
+													<c:set var="icons" value="${icons} fw" />
+												</c:if>
+												<c:if test="${msg.answered}">
+													<c:set var="icons" value="${icons} reply" />
+												</c:if>
+												<c:if test="${msg.canceled}">
+													<c:set var="icons" value="${icons} wd" />
+												</c:if>
+													<%-- 										<c:set var="icons" value="${icons} pointer" /> --%>
+												<c:choose>
+													<c:when test="${msg.recent}"><fmt:message key="icon.recent" var="icons_title"/></c:when>
+													<c:when test="${msg.forward}"><fmt:message key="icon.forward" var="icons_title"/></c:when>
+													<c:when test="${msg.answered}"><fmt:message key="icon.reply" var="icons_title"/></c:when>
+													<c:when test="${msg.canceled}"><fmt:message key="icon.cancel" var="icons_title"/></c:when>
+													<c:when test="${msg.read}"><fmt:message key="icon.read" var="icons_title"/></c:when>
+													<c:otherwise><fmt:message key="icon.unread" var="icons_title"/></c:otherwise>
+												</c:choose>
+												<span class="${icons}" onclick="setMailRead_wma(this)" title="<c:out value="${icons_title}"/>" data-num="${msg.number}" data-mid="${msg.messageID}"></span>
+												<span class="dsp_none" id='checkNumberData-<c:out value="${msg.number}"/>'
+													  data-sender='<c:out value="${msg.fromID}"/>'
+													  data-canceled='<c:out value="${msg.canceled}"/>'
+													  data-mid='<c:out value="${msg.messageID}"/>'
+													  data-folder='<wma:out value="${msg.originalFolder}"/>'
+													  data-sender_mail='<wma:out value="${msg.from}" default="&nbsp;"/>'
+													  data-sender_name='<wma:out value="${msg.from}" rfc822="true" default="" />'
+												/>
+												<c:if test="${folderfullname ne prefs.draftFolder}">
+													<a id="tag_icon_${msg.messageID}" onclick="showMailTag(this);event.stopPropagation();" class="ico_tag <c:if test="${!msg.tagFlag}"> add</c:if>" title="<c:if test="${!msg.tagFlag}"><fmt:message key="tag.detail.add"/></c:if><c:if test="${msg.tagFlag}">${msg.tags}</c:if>" href="#"
+													   data-boxid="${msg.folderFullName}"
+													   data-msgnumber="${msg.number}"
+													   data-mid="${msg.messageID}"
+													>tag</a>
+												</c:if>
+											</div>
+											<div class="title" title="<c:out value='${msg.subject}' default='${notitle}' escapeXml='false'/>">
+												<!-- // 폴더 구분 -->
+												<c:if test="${(param.acton eq 'detailmessages' or param.path eq '_ALLBOX_' or param.path eq '_FLAGBOX_') and !msg.errorMailFlag}">
+											<span class="locate">
+												<c:choose>
+													<c:when test="${msg.folderName eq 'INBOX'}">
+														<fmt:message key="inbox.name" />
+													</c:when>
+													<c:when test="${msg.folderName eq 'SELFBOX'}">
+														<fmt:message key="inbox.mymail" />
+													</c:when>
+													<c:when test="${msg.folderName eq 'FORMBOX'}">
+														<fmt:message key="mail.type.formbox" />
+													</c:when>
+													<c:when test="${msg.folderName eq '보낸 편지함'}">
+														<fmt:message key="preferences.outbox" />
+													</c:when>
+													<c:otherwise>
+														${msg.folderName}
+													</c:otherwise>
+												</c:choose>
+											</span>
+												</c:if>
+												<!-- // 뱃지 -->
+												<c:if test="${msg.multipart}">
+													<span class="ico file" title="<fmt:message key="icon.attachments"/>"><fmt:message key="egw.user.lable.attachment"/></span>
+												</c:if>
+												<c:if test="${msg.priority eq 1}">
+													<span class="badge emergency"><fmt:message key="egw.user.lable.urgent"/></span>
+												</c:if>
+												<c:if test="${msg.secure}">
+													<span class="badge security"><fmt:message key="egw.user.lable.secure"/></span>
+												</c:if>
+												<a class="subject" href="#">
+													<c:choose>
+														<c:when test="${msg.errorMailFlag}">
+															<fmt:message key="message.errormail.title" />
+														</c:when>
+														<c:otherwise>
+															<c:out value='${msg.subject}' default='${notitle}' escapeXml="false"/>
+														</c:otherwise>
+													</c:choose>
+												</a>
+												<c:if test="${!msg.errorMailFlag and !msg.draft}">
+													<a class="ico pop_up" href="#" onclick="browse_wma(this, true);;event.stopPropagation();return false;" title="<fmt:message key="message.popup"/>"
+													   data-boxid="${msg.folderFullName}"
+													   data-msgnumber="${msg.number}"
+													   data-secure="${msg.secure}"
+													   data-deleted="${msg.deleted}"
+													   data-errorflag="${msg.errorMailFlag}"
+													   data-mid="${msg.messageID}"
+													   data-draft="${msg.draft}"><fmt:message key="message.popup"/></a>
+												</c:if>
+											</div>
+											<div class="person">
+												<span class="badge vip dsp_none" >VIP</span>
+												<c:choose>
+													<c:when test="${folderfullname eq prefs.draftFolder}">
+														<c:set var="recipient">
+															<wma:exout value="${msg.to}" rfc822="true"  />
+														</c:set>
+														<c:choose>
+															<c:when test="${not empty recipient}">
+																<c:forTokens items="${recipient}" delims=",;" var="current" varStatus="status">
+																	<wma:exout value="${current}" default="&nbsp;"  /><c:if test="${not status.last}">,</c:if>
+																</c:forTokens>
+															</c:when>
+															<c:when test="${not empty msg.senderList.toList}">
+																<c:forEach items="${msg.senderList.toList}" var="current" varStatus="status">
+																	<wma:exout value="${current[1]}" default="&nbsp;"  /><c:if test="${not status.last}">,</c:if>
+																</c:forEach>
+															</c:when>
+															<c:otherwise>&nbsp;</c:otherwise>
+														</c:choose>
+													</c:when>
+													<c:when test="${(folderfullname eq prefs.sentMailArchive or folderfullname == 'FORMBOX') and not empty msg.handwriteTo}">
+														<c:set var="recipient">
+															<c:forTokens items="${msg.handwriteTo}" delims=",;" var="current" varStatus="status">
+																<c:set var="recType" value="${fn:trim(msg.senderList.toList[status.index][2])}"/>
+																<c:if test="${empty recType}">
+																	<c:set var="recType" value="@"/>
+																</c:if>
+																<c:set var="displayFromName">
+																	<wma:out value="${fn:trim(current)}" rfc822="true" default="" />
+																</c:set>
+																<c:choose>
+																	<c:when test="${recType eq '@' or recType eq '^'}">
+																<span class="name"><a href="#" onclick="_showUserContextMenu_wma(this, event)" value="${msg.number}" data-from="${msg.senderList.toList[status.index][1]}" data-fromid="${msg.senderList.toList[status.index][0]}" data-name="${displayFromName}" >
+																	${displayFromName}<c:if test="${not status.last}">,</c:if>
+																</a></span>
+																	</c:when>
+																	<c:otherwise>
+																		<span class="name">
+																			${displayFromName}<c:if test="${not status.last}">,</c:if>
+																		</span>
+																	</c:otherwise>
+																</c:choose>
+															</c:forTokens>
+														</c:set>
+														<c:choose>
+															<c:when test="${not empty recipient}">
+																<c:forTokens items="${recipient}" delims=",;" var="current" varStatus="status">
+																	<wma:exout value="${fn:trim(current)}" default="" /><c:if test="${not status.last}">,</c:if>
+																</c:forTokens>
+															</c:when>
+															<c:otherwise>(<fmt:message key="message.address.unknown"/>)</c:otherwise>
+														</c:choose>
+													</c:when>
+													<c:otherwise>
+														<c:choose>
+															<c:when test="${msg.internalMail and not empty msg.fromID}">
+																<c:choose>
+																	<c:when test="${not empty msg.orgFromName}">
+																		<c:set var="displayFromName">
+																			<wma:out value="${msg.orgFromName}" rfc822="true" default="" />
+																		</c:set>
+																	</c:when>
+																	<c:otherwise>
+																		<c:set var="displayFromName">
+																			<wma:out value="${msg.from}" rfc822="true" default="" />
+																		</c:set>
+																	</c:otherwise>
+																</c:choose>
+																<span class="name"><a href="#" onclick="_showUserContextMenu_wma(this, event)" value="${msg.number}" data-from="${msg.from}" data-fromid="${msg.fromID}" data-name="${displayFromName}" >
+																		${displayFromName}
+																</a></span>
+															</c:when>
+															<c:otherwise>
+																<c:choose>
+																	<c:when test="${not empty msg.orgFromName}">
+																		<wma:out value="${msg.orgFromName}" rfc822="true" default="&nbsp;" />
+																	</c:when>
+																	<c:otherwise>
+																		<c:set var="displayFromName">
+																			<wma:out value="${msg.from}" rfc822="true" default="" />
+																		</c:set>
+																		<span class="name"><a href="#" onclick="_showUserContextMenu_wma(this, event)" value="${msg.number}" data-from="${msg.from}" data-fromid="${msg.fromID}" data-name="${displayFromName}" >
+																	${displayFromName}
+																	<input type="hidden" id="sender_num" value="${msg.number}" />
+																</a></span>
+																	</c:otherwise>
+																</c:choose>
+															</c:otherwise>
+														</c:choose>
+													</c:otherwise>
+												</c:choose>
+												<c:if test="${msg.threadCount > 1}">
+													<a class="thread_btn" onclick="toggleThreadList(this);event.stopPropagation();" title="<fmt:message key="egw.user.lable.expandAssociatedMail"/>" data-num="${msg.number}" data-threadid="<c:out value="${msg.threadID}"/>"><span><c:out value="${msg.threadCount}"/></span></a>
+												</c:if>
+											</div>
+											<span class="date" data-date='<c:out value="${msg.date}"/>'>
+                                            <fmt:formatDate var="cYear" value="${now}" timeZone="${GWTIMEZONE_ID}" pattern="yyyy" />
+                                            <fmt:formatDate var="cMonth" value="${now}" timeZone="${GWTIMEZONE_ID}" pattern="MM" />
+                                            <fmt:formatDate var="cDate" value="${now}" timeZone="${GWTIMEZONE_ID}" pattern="dd" />
+                                            <fmt:formatDate var="mYear" value="${msg.date}" timeZone="${GWTIMEZONE_ID}" pattern="yyyy" />
+                                            <fmt:formatDate var="mMonth" value="${msg.date}" timeZone="${GWTIMEZONE_ID}" pattern="MM" />
+                                            <fmt:formatDate var="mDate" value="${msg.date}" timeZone="${GWTIMEZONE_ID}" pattern="dd" />
+                                            <fmt:formatDate var="mTime" value="${msg.date}" timeZone="${GWTIMEZONE_ID}" pattern="HH:mm" />
+                                            <%--<c:choose>
+                                                <c:when test="${cYear ne mYear}">
+                                                    <c:out value="${mYear}"/>-<c:out value="${mMonth}"/>-<c:out value="${mDate}"/>
+                                                </c:when>
+                                                <c:when test="${cMonth ne mMonth}">
+                                                    <c:out value="${mMonth}"/>-<c:out value="${mDate}"/>
+                                                </c:when>
+                                                <c:when test="${cDate ne mDate}">
+                                                    <c:out value="${mMonth}"/>-<c:out value="${mDate}"/>
+                                                </c:when>
+                                                <c:otherwise> </c:otherwise>
+                                            </c:choose>
+                                            <c:out value="${mTime}" />--%>
+                                            <c:out value="${mYear}"/>-<c:out value="${mMonth}"/>-<c:out value="${mDate}"/> <c:out value="${mTime}" />
+                                            </span>
+											<span class="size" title="<c:out value='${msg.subject}' default='${notitle}' escapeXml='false'/>">
+												<c:set scope="page" var="targetSize" value="${msg.size}"/>
+												<%@ include file="includes/data_size_conversion.jsp"%>
+											</span>
+										</li>
+									</c:forEach>
+								</c:when>
+								<c:otherwise>
+									<c:choose>
+										<c:when test="${param.path eq 'INBOX'}">
+											<li class="unread"><div class="title align_ct" style="max-width:100%;"><c:out value="${emptyList}"/></div></li>
+										</c:when>
+										<c:otherwise>
+											<li class="unread"><div class="title align_ct" style="max-width:100%"><c:out value="${emptyList}"/></div></li>
+										</c:otherwise>
+									</c:choose>
+								</c:otherwise>
+							</c:choose>
+						</ul>
+					</dd>
+					<dd>
+						<div class="paginate_area">
+							<div class="paginate">
+								<c:choose>
+									<c:when test="${pagination.splitPrevPageEnabled}">
+										<a class="first" href="#" onclick="gotoPage_wma('${pagination.firstPage}');return false;">First</a>
+										<a class="pre" href="#" onclick="gotoPage_wma('${pagination.splitFirstPageForWindow-1}');return false;">Back</a>
+									</c:when>
+									<c:otherwise>
+										<a class="first disabled">First</a>
+										<a class="pre disabled">Back</a>
+									</c:otherwise>
+								</c:choose>
+								<!-- // 1페이지가 아닌경우, disabled 삭제 -->
+								<c:set var="limitPageNum" value="${pagination.splitLastPageForWindow}" />
+								<c:if test="${pagination.splitLastPageForWindow - pagination.splitFirstPageForWindow gt 2}">
+									<c:set var="limitPageNum" value="${pagination.splitFirstPageForWindow+2}" />
+								</c:if>
+								<c:forEach var="p" begin="${pagination.splitFirstPageForWindow}" end="${limitPageNum}">
+									<c:choose>
+										<c:when test="${p == pagination.currentPage}">
+											<a class="selected">${p + 1}</a>
+										</c:when>
+										<c:otherwise>
+											<a href="#" onclick="gotoPage_wma('${p}');return false;" >${p + 1}</a>
+										</c:otherwise>
+									</c:choose>
+								</c:forEach>
+								<c:choose>
+									<c:when test="${pagination.splitNextPageEnabled}">
+										<a class="next" href="#" onclick="gotoPage_wma('${pagination.splitLastPageForWindow+1}');return false;">Next</a>
+										<a class="last" href="#" onclick="gotoPage_wma('${pagination.lastPage}');return false;">Last</a>
+									</c:when>
+									<c:otherwise>
+										<a class="next disabled">Next</a>
+										<a class="last disabled">Last</a>
+									</c:otherwise>
+								</c:choose>
+							</div>
+							<div class="page_num">
+								<input type="text" name="targetPage" id="v_targetPage" value="${pagination.currentPage + 1}" onKeyPress="if(event.keyCode == 13){gotoPage_wma(this.value-1);return false;}"> /
+								${pagination.lastPage + 1}
+							</div>
+						</div>
+					</dd>
+				</dl>
+				<!-- // 좌측 리스트 -->
+			</div>
+			<!-- // vertical left area -->
+			<div class="controlbar ui-draggable"></div>
+			<!-- 본문 영역 -->
+			<div class="vertical_rg" id="topContentAreaDiv_wma">
+				<div class="scroll_area">
+					<!-- handy-scroll -->
+					<div class="handy-scroll">
+						<div class="view_guide" id="contentAreaDiv_wma">
+							<fmt:message key="custom.wma.mes6"/>
+						</div>
+					</div>
+					<!-- // handy-scroll -->
+				</div>
+			</div>
+			<!-- // 본문 영역 -->
+		</div>
+		<!-- // 리스트 영역 분할 -->
+
+	</div>
+	<!-- // 본문 영역 -->
+</div>
+
+<!-- auto suggest -->
+<script type="text/javascript" src="/directory-web/directory/js/jquery.hs.directory/jquery.hs.directory.js?v=9000"></script>
+<script type="text/javascript" src="/directory-web/directory/js/directory.autosuggest.js?v=9105"></script>
+<script type="text/javascript" src="/directory-web/directory/js/jquery.tokeninput.js?v=9105"></script>
+<script type="text/javascript" src="/directory-web/directory/js/directory.org.js?v=9105"></script>
+<script type='text/javascript' src="/directory-web/directory/jsp/directoryAutoInclude.jsp?v=9105"></script>
+<!-- auto suggest -->
+
+<script type="text/javascript">
+	// auto suggest
+	var autosuggest_hint_text='<fmt:message key="autosuggest_hint_text"/>';
+	var autosuggest_no_result_text='<fmt:message key="autosuggest_no_result_text"/>';
+	var autosuggest_searching_text='<fmt:message key="autosuggest_searching_text"/>';
+	var autoSaveMsg = '<fmt:message key="auto.localstorage.save"/>';
+	var detailFlag = false;
+	// auto suggest
+
+	var listPath = '<c:out value="${param.path}" />'
+	var listTitle = '';
+	var emptyMessage = '';
+	var listFolder = '${foldername}';
+	var currCount = ${pagination.objectsCount};
+	var etcMode = "";
+	var currPage = parseInt("${pagination.currentPage}") + 1;
+	var listSize = "${fn:length(messages)}";
+	<c:choose>
+	<c:when test="${(param.etcMode eq 'vip' or param.etcMode eq 'keyword')}">
+	listTitle = '<c:out value="${param.term}" />';
+	etcMode = '<c:out value="${param.etcMode}"/>';
+	list_param.etcMode = etcMode;
+	</c:when>
+	<c:when test="${param.acton eq 'simplemessages' or param.acton eq 'detailmessages'}">
+	listTitle = '<fmt:message key="search.result.title" />';
+	detailFlag = true;
+	</c:when>
+	<c:otherwise>
+	<c:choose>
+	<c:when test="${foldername eq 'INBOX'}">
+	listTitle = '<fmt:message key="inbox.name" />';
+	</c:when>
+	<c:when test="${foldername eq 'SELFBOX'}">
+	listTitle = '<fmt:message key="inbox.mymail" />';
+	</c:when>
+	<c:when test="${foldername eq prefs.sentMailArchive}">
+	listTitle = '<fmt:message key="preferences.outbox" />';
+	</c:when>
+	<c:when test="${foldername eq '보낸 편지함'}">
+	listTitle = '<fmt:message key="preferences.outbox" />';
+	</c:when>
+	<c:otherwise>
+	<c:choose>
+	<c:when test="${param.path eq '_ALLBOX_'}">
+	listTitle = '<fmt:message key="mailbox.tree.all.box" />';
+	</c:when>
+	<c:when test="${param.path eq '_ALLBOX_,'}">
+	listTitle = '<fmt:message key="mailbox.tree.all.box" />';
+	</c:when>
+	<c:when test="${param.path eq '_FLAGBOX_'}">
+	listTitle = '<fmt:message key="mailbox.tree.flag.box" />';
+	</c:when>
+	<c:otherwise>
+	listTitle = '${foldername}';
+	</c:otherwise>
+	</c:choose>
+	</c:otherwise>
+	</c:choose>
+	</c:otherwise>
+	</c:choose>
+	var searchHelperTxt = '';
+	<c:choose>
+	<c:when test="${foldername eq 'SELFBOX'}">
+	searchHelperTxt = '<fmt:message key="compose.subject" />+<fmt:message key="compose.to" />';
+	</c:when>
+	<c:when test="${foldername eq prefs.draftFolder}">
+	searchHelperTxt = '<fmt:message key="compose.subject" />';
+	</c:when>
+	<c:when test="${foldername eq prefs.sentMailArchive}">
+	searchHelperTxt = '<fmt:message key="compose.subject" />+<fmt:message key="compose.to" />';//+<fmt:message key="tag.search.label" />';
+	</c:when>
+	<c:otherwise>
+	searchHelperTxt = '<fmt:message key="compose.subject" />+<fmt:message key="compose.from" />';//+<fmt:message key="tag.search.label" />';
+	</c:otherwise>
+	</c:choose>
+
+	<c:if test="${param.filter eq 'recent'}">
+	listTitle = '<fmt:message key="icon.recent"/>';
+	</c:if>
+	<c:if test="${param.filter eq 'unread'}">
+	listTitle = '<fmt:message key="messages.filter.unread"/>';
+	</c:if>
+	<c:if test="${param.filter eq 'flagged'}">
+	listTitle = '<fmt:message key="messages.filter.flagged"/>';
+	</c:if>
+	<c:if test="${param.filter eq 'priority'}">
+	listTitle = '<fmt:message key="messages.filter.priority"/>';
+	</c:if>
+	<c:if test="${param.filter eq 'secure'}">
+	listTitle = '<fmt:message key="messages.filter.secure"/>';
+	</c:if>
+	<c:if test="${param.filter eq '5daysago'}">
+	listTitle = '<fmt:message key="messages.filter.5daysago"/>';
+	</c:if>
+	<c:if test="${param.filter eq 'outmail'}">
+	listTitle = '<fmt:message key="messages.filter.outmail"/>';
+	</c:if>
+	<c:if test="${param.filter eq 'inmail'}">
+	listTitle = '<fmt:message key="messages.filter.inmail"/>';
+	</c:if>
+
+
+	var acton = '<c:out value="${param.acton}" />';
+	<%-- 메일 선택에 따른 버튼 보임/숨김 --%>
+	function setVisibleButtons(name) {
+		if(getCheckedItemsArray_wma(name).length == 0) {
+			<%-- 20180807 kyc 쓰기 버튼의 경우 계속 활성화 되어야 한다. Start --%>
+			$(".btns_area .align_lf").find(".btn:not(.select)").not('.notDisabled').addClass("disabled");
+			<%-- 20180807 kyc 쓰기 버튼의 경우 계속 활성화 되어야 한다. End --%>
+			$(".btns_area .align_lf").find(".btn_more").addClass("disabled");
+			<%-- 20180807 kyc 쓰기 버튼의 경우 계속 활성화 되어야 한다. Start --%>
+			$(".btns_area .align_lf").find(".btn:not(.select)").not('.notDisabled').css("pointer-events", "none");
+			<%-- 20180807 kyc 쓰기 버튼의 경우 계속 활성화 되어야 한다. End --%>
+			$(".btns_area .align_lf").find(".btn_more").css("pointer-events", "none");
+			$("div.group.open").removeClass("open");
+		} else {
+			$(".btns_area .align_lf").find(".btn:not(.select)").removeClass("disabled");
+			$(".btns_area .align_lf").find(".btn_more").removeClass("disabled");
+			$(".btns_area .align_lf").find(".btn:not(.select)").css("pointer-events", "");
+			$(".btns_area .align_lf").find(".btn_more").css("pointer-events", "");
+		}
+	}
+
+	<%-- 페이지 이동 --%>
+	function gotoPage_wma(page) {
+		var lastpage = parseInt("${pagination.lastPage}");
+		if(page > lastpage) {
+			page = lastpage;
+		}
+		if(page < 0) {
+			page = 0;
+		}
+
+		list_param.page = page;
+		getMessages_wma();
+	}
+
+	<%-- 메일 체크박스 선택 시 스타일 변경 --%>
+	function selectMessage_wma(obj, checked) {
+		var isCheckedAllItems = true;
+		var mid = $(obj).data("mid");
+		var checked = checked || $(obj).is(":checked");
+		<%-- 심플/분할 리스트의 메일 동시 선택 --%>
+		$("input[name='"+$(obj).prop("name")+"'][type='checkbox'][value='"+$(obj).val()+"']").each(function(){
+			if($(this).data("mid") == mid){
+				$(this).prop("checked", checked);
+
+				if(checked) {
+					$(this).parent().parent().parent().addClass('selected');
+				}else{
+					$(this).parent().parent().parent().removeClass('selected');
+				}
+			}
+		});
+		$("[name*='chkMessage_wma']").each(function(){
+			if(!$(this).is(":checked")){
+				isCheckedAllItems = false;
+				return;
+			};
+		});
+		checkAllItems_wma("chkMessageAll_wma", isCheckedAllItems);
+
+		setVisibleButtons($(obj).prop("name"));
+		setDefaultMessage();
+	}
+
+	function selectMessageOption_wma(mode){
+		var target;
+		selectMessageAllVal_wma(false);
+		switch(mode) {
+			case "0" : <%--모든편지--%>
+				$("[id*='liMessage_wma_']").each(function(){
+					target = $(this).find(".form").first().find("input:checkbox");
+					selectMessage_wma(target, true);
+				});
+				$('#chkMessageAll_wma').prop('checked',true);
+				$('#chkMessageAll_wma').attr('checked',true);
+				break;
+			case "1" : <%--안읽은편지--%>
+				$("[id*='liMessage_wma_']").each(function(){
+					target = $(this).find(".form").first().find("input:checkbox");
+					if($(this).hasClass("unread")){
+						selectMessage_wma(target, true);
+					}
+				});
+				break;
+			case "2" : <%--읽은편지--%>
+				$("[id*='liMessage_wma_']").each(function(){
+					target = $(this).find(".form").first().find("input:checkbox");
+					if(!$(this).hasClass("unread")){
+						selectMessage_wma(target, true);
+					}
+				});
+				break;
+			case "3" :
+				$("[id*='liMessage_wma_']").each(function(){
+					target = $(this).find(".form").first().find("input:checkbox");
+					if($(this).find(".flag input:checkbox").prop("checked")){
+						selectMessage_wma(target, true);
+					}
+				});
+				break;
+			case "4" : <%--선택해제--%>
+				$("[id*='liMessage_wma_']").each(function(){
+					target = $(this).find(".form").first().find("input:checkbox");
+					selectMessage_wma(target, false);
+				});
+				break;
+		}
+	}
+
+	<%-- 메일 전체 선택 체크박스 클릭 --%>
+	function selectMessageAll_wma(obj) {
+		var checkboxName = "chkMessage_wma";
+		checkMessageAll_wma(checkboxName, obj.checked);
+		setDefaultMessage();
+	}
+
+	function selectMessageAllVal_wma(checked) {
+		var checkboxName = "chkMessage_wma";
+		checkMessageAll_wma(checkboxName, checked);
+		setDefaultMessage();
+	}
+
+	<%-- 메일 전체 선택/해제 --%>
+	function checkMessageAll_wma(checkboxName, checked) {
+		checkAllItems_wma(checkboxName, checked);
+		$("[id*='liMessage_wma_']").removeClass('selected');
+
+		if(checked) {
+			$("input[name='"+checkboxName+"'][type='checkbox']:checked").parent().parent().parent().addClass("selected");
+		}
+		setVisibleButtons(checkboxName);
+	}
+
+	<%-- 우측 메일 본문 기본 내용 디자인 나오면 적용 필요--%>
+	function setDefaultMessage() {
+		var objs = getCheckedItemValuesArray_wma("chkMessage_wma");
+		if (objs.length != 1){
+			$("#contentAreaDiv_wma").html('<fmt:message key="custom.wma.mes6"/>');
+		}
+	}
+	//'senderterm','sendertermmail', 'torecterm','torectermmail', 'ccrecterm','ccrectermmail',
+	var detailSearchOptions = {};
+	function popupOrg_DetailSearch_wma(type){
+		$("#selectMode").val("1");
+		//$("#openerType").val("M");
+		if (!initDirectory_wma(false, type)) {
+			return false;
+		}
+		var clickData = "directory_wma";
+		if(!clickDiv.setClick(clickData)) {
+			return;
+		}
+		// change type: to -> from, cc -> to, bcc -> cc
+		if(type=='bcc') type='cc';
+		else if(type=='cc') type='to';
+		else type='from';
+		var orgTitle = "Select,Target";
+		if('cc'==type) { orgTitle = '<fmt:message key="org.select"/>,<fmt:message key="egw.user.compose.cc"/>'; }
+		else if('to'==type) { orgTitle = '<fmt:message key="org.select"/>,<fmt:message key="egw.user.lable.receiver"/>'; }
+		else { orgTitle = '<fmt:message key="org.select"/>,<fmt:message key="egw.user.lable.sender"/>'; }
+		var oldFrom = detailSearchOptions.fromList ? detailSearchOptions.fromList : "";
+		var oldTo = detailSearchOptions.toList ? detailSearchOptions.toList : "";
+		var oldCc = detailSearchOptions.ccList ? detailSearchOptions.ccList : "";
+
+		directory.changeTitle(orgTitle);
+		directory.open(function(recList, x, y) {
+			if('from'==type) {
+				if(recList.recipients.length == 1)
+					$("#senderterm").val(recList.recipients[0].name);
+				$("#sendertermmail").val(recList.recipients[0].email);
+			} else if('to'==type) {
+				$("#torecterm").val(recList.recipients[0].name);
+				$("#torectermmail").val(recList.recipients[0].email);
+			} else {
+				$("#ccrecterm").val(recList.recipients[0].name);
+				$("#ccrectermmail").val(recList.recipients[0].email);
+			}
+			clickDiv.removeClick(clickData);
+		});
+		//$("#openerType").val("");
+		$("#selectMode").val("2");
+	}
+
+	var myBoxTreeForMove = new PrivateBoxTree();
+
+	function getSelectedBoxPathForMove() {
+		return myBoxTreeForMove.getSelectedPrivateBoxPath()
+	}
+	function initPrivateBoxTreeForMove() {
+		myBoxTreeForMove.setPageId("privateBoxTreeForMove");
+		myBoxTreeForMove.initPrivateBoxTree();
+	}
+
+	function getBoxTreeJson() {
+		bindDiv.ajaxThenSetting('/wma/fld.do',{
+			async : true,
+			type : 'POST',
+			data : {
+				"acton": "personalfoldertree",
+				"pagename": "boxTree"
+			},
+			dataType : 'json',
+			success : function (data) {
+				treeJson = data;
+				initPrivateBoxTreeForMove();
+			},
+			error : function(request,status,error) {
+				//alert("code:"+request.status+"\n"+"message:"+request.responseText+"\n"+"error:"+error);
+			}
+		},successRefreshBoxTree_wma,errorRefreshBoxTree_wma)
+	}
+
+	var treeJson = [];
+	var treeRefresh = false;
+	var treeInitial = false;
+	function refreshBoxTree_wma(isForce, isInitial) {
+		treeRefresh = isForce;
+		treeInitial = isInitial;
+		getBoxTreeJson()
+	}
+
+	function destroyBoxTree() {
+		try { $("#tree_contents_area").dynatree('destroy'); } catch(e) {}
+	}
+	function successRefreshBoxTree_wma() {
+		if(treeRefresh) destroyBoxTree();
+		initialBoxTree();
+		if(treeInitial) clearSelectedPrivateBox_wma();
+		treeRefresh = false;
+		treeInitial = false;
+		treeCreated = true;
+		afterBoxTree_wma();
+	}
+
+	function errorRefreshBoxTree_wma() {
+		treeRefresh = false;
+		treeInitial = false;
+	}
+
+
+	<%-- 정렬--%>
+	function sort_wma(orderName) {
+		list_param.asc = !list_param.asc;
+		list_param.ordername = orderName;
+
+		var $threadView = $("#btnThread_wma");
+		if($($threadView).hasClass("on") === true) {
+			list_param.threadMail = false;
+			isThreadMail = false;
+			$threadView.removeClass("on");
+		}
+
+		getMessages_wma();
+	}
+	var simpleSearchCriteria="";
+	function changeSimpleSearchCriteria_wma(mode){
+		if('default' != mode) {
+			simpleSearchCriteria = mode;
+		} else {
+			simpleSearchCriteria = "";
+		}
+	}
+	function setSimpleSearchCriteria_wma(selectedValue) {
+		if(selectedValue.indexOf('_') != -1) {
+			selectedValue = 'default';
+			simpleSearchCriteria="";
+		} else {
+			simpleSearchCriteria=selectedValue;
+		}
+		selectDiv.setValue("simple_search_items", selectedValue);
+		selectDiv.refresh("simple_search_items");
+	}
+	<%-- Ready--%>
+	$(document).ready(function() {
+		$("#wmaListTitle > H2").text(listTitle);
+		$("#wmaListTitle > span.length > em").text(currCount);
+		try {
+			<c:if test="${!(param.acton eq 'simplemessages' or param.acton eq 'detailmessages')}">
+			updateLnbMenu('<c:out value="${param.path}" />', listTitle);
+			</c:if>
+		} catch(e){}
+
+		<%-- 20180807 kyc 쓰기 버튼의 경우 계속 활성화 되어야 한다. Start --%>
+		$(".btns_area .align_lf").find(".btn:not(.select)").not('.notDisabled').addClass("disabled");
+		<%-- 20180807 kyc 쓰기 버튼의 경우 계속 활성화 되어야 한다. End --%>
+		$(".btns_area .align_lf").find(".btn_more").addClass("disabled");
+		<%-- 20180807 kyc 쓰기 버튼의 경우 계속 활성화 되어야 한다. Start --%>
+		$(".btns_area .align_lf").find(".btn:not(.select)").not('.notDisabled').css("pointer-events", "none");
+		<%-- 20180807 kyc 쓰기 버튼의 경우 계속 활성화 되어야 한다. End --%>
+		$(".btns_area .align_lf").find(".btn_more").css("pointer-events", "none");
+
+		//selectDiv.selectmenu("optChecks", function(event, data) {
+		//    selectMessageOption_wma(data.item.value);
+		//});
+
+		<%-- 필터 설정--%>
+		selectDiv.selectmenu("optFilters", function(event, data) {
+			var filter = data.item.value;
+			var param = {page : 0};
+			if(filter === "") {
+				param.filter = null;
+				param.acton = "normalmessages";
+			}else {
+				param.filter = filter;
+				param.acton = "filtermessages";
+			}
+			folderInitialize_wma(param);
+			getMessages_wma();
+		});
+		selectDiv.setValue("optFilters", "<c:out value="${param.filter}" />");
+		<c:if test="${(param.acton eq 'detailmessages' or param.acton eq 'simplemessages')}">
+		$('#optFilters').closest('div.group').addClass('dsp_none');
+		</c:if>
+		<%-- 리스트개수 설정--%>
+		selectDiv.selectmenu("optPageTake", function(event, data) {
+			var messagesPerPage = data.item.value;
+			var msgTotalCount = parseInt("${pagination.objectsCount}");
+			var pageCount = parseInt("${pagination.lastPage}");
+			var currentPage = parseInt("${pagination.currentPage}")
+			var page = parseInt(msgTotalCount/messagesPerPage);
+
+			if(msgTotalCount % pageCount >= 0)
+				page;
+			else
+				page--;
+
+			if(page < 0)
+				page= 0;
+
+			if(currentPage > page)
+				list_param.page = page;
+
+			<%-- 페이지 리스트 개수 DB 저장 --%>
+			$('#messagesPerPage').val(data.item.value);
+			bindDiv.ajaxSetting('/wma/wmapf.do',{
+				async : false,
+				type : 'POST',
+				data : $("#preferece_form_wma").serializeObject_wma(),
+				success : function(data) {
+					getMessages_wma();
+				},
+				error : function() {
+					alert(lang.status.job.failure);
+				}
+			});
+		});
+		selectDiv.setValue("optPageTake", "${prefs.messagesPerPage}");
+		selectDiv.selectmenu("date", function(event, data) {
+			updateDateUI(data.item.value);
+		},true);
+
+		<%-- 대화형 목록에 대한 아이콘 활성화 여부 --%>
+		if(list_param.threadMail) {
+			$("#btnThread_wma").addClass("on");
+		}
+		<%-- 검색에 대한 옵션 처리 --%>
+		if(searchHelperTxt) {
+			$('#simple_search_items option:contains("help_txt")').text(searchHelperTxt);
+		}
+		selectDiv.selectmenu("simple_search_items", function(event, data) {
+			changeSimpleSearchCriteria_wma(data.item.value);
+		});
+		initSearchForm();
+		getBoxTreeJson();
+		initPrivateBoxTreeForMove();
+
+		if("vip"==etcMode || "keyword"==etcMode) {
+			//$('a.btn_d_search').hide();
+			$("#tab_search_detail_wma").trigger("click");
+			$("#tab_search_simple_wma").removeAttr("onclick");
+			if("vip"==etcMode) {
+				$("#senderterm").val("<c:out value="${param.senderterm}" />");
+				$("#sendertermmail").val("<c:out value="${param.sendertermmail}"/>");
+				$("#senderterm").prop("readonly", true);
+			} else {
+				$("#subjectterm").val("<c:out value="${param.subjectterm}" />");
+				$("#subjectterm").prop("readonly", true);
+			}
+		}
+		// Register to Vertical bar last position
+		$( ".vertical_ui" ).on( "dragstop", function( event, ui ) {
+			if(!moveFlag){
+				var wma_vertical_position = ui.position.left;
+				localStorage.setItem("wma_vertical_position", wma_vertical_position);
+			}
+		} );
+		try{ afterListing_wma(); } catch(e) {}
+		try{ if('true' == bUseOnlineHelp) $('#onlinehelpbtn_wma').removeClass("dsp_none"); } catch(e) {}
+		<%-- 핸디 스크롤 --%>
+		$('.handy-scroll').scrollbar();
+		areaDiv.listArea();
+	});
+
+	<%-- context menu lable --%>
+	var contextMenu_compose 	= '<fmt:message key="menu.compose" />';<%-- 편지쓰기 --%>
+	var contextMenu_searchFrom 	= '<fmt:message key="egw.user.context.search.from" />';<%-- 보낸사람으로 검색하기 --%>
+	var contextMenu_searchTo 	= '<fmt:message key="egw.user.context.search.to" />';<%-- 받은사람으로 검색하기 --%>
+	var contextMenu_searchPerson = '<fmt:message key="egw.user.context.search.person" />';<%-- 이 사람과 주고받은 메일 --%>
+	var contextMenu_setVip 		= '<fmt:message key="egw.user.context.set.vip" />';<%-- VIP 지정하기 --%>
+	var contextMenu_setContact 	= '<fmt:message key="egw.user.context.set.contact" />';<%-- 주소록 추가하기 --%>
+	var contextMenu_userInfo 	= '<fmt:message key="egw.user.context.userinfo" />';<%-- 사용자 정보 --%>
+	var contextMenu_deleteFrom 	= '<fmt:message key="egw.user.context.delete.from" />';<%-- 이 사람이 보낸메일 모두삭제 --%>
+</script>
+<script>
+	function getCheckedItemArray() {
+		var chkMessage_wma = [];
+		var targetListDiv;
+		if($("#generalListArea_wma").is(":visible")) {
+			targetListDiv = $("#generalListArea_wma");
+		} else {
+			targetListDiv = $("#listAreaDiv_wma");
+		}
+		var selectedLi = targetListDiv.find("input:checkbox[name='chkMessage_wma']:checked");
+		selectedLi.each(function() {
+			chkMessage_wma.push($(this).val());
+		});
+		return chkMessage_wma;
+	}
+	function getListItemArray() {
+		var items_wma = [];
+		var targetListDiv;
+		if($("#generalListArea_wma").is(":visible")) {
+			targetListDiv = $("#generalListArea_wma");
+		} else {
+			targetListDiv = $("#listAreaDiv_wma");
+		}
+		var selectedLi = targetListDiv.find("li");
+		selectedLi.each(function() {
+			items_wma.push($(this).val());
+		});
+		return items_wma;
+	}
+	function checkLastPage(){
+		var $targetPage = $('#targetPage');
+		if($targetPage.length == 0) $targetPage = $('#v_targetPage');
+		var lastPage = $("#lastpage").val();
+		var chkMessage_wma = getCheckedItemArray();
+		var items_wma = getListItemArray();
+		var currPage = $("div.paginate a.selected").text();
+
+		if(lastPage == $.trim() && chkMessage_wma.length == parseInt(items_wma.length,10)-1){
+			list_param.page = parseInt($targetPage.val())-2;
+		}else {
+			list_param.page = parseInt($targetPage.val())-1;
+		}
+
+		if(typeof($targetPage.val()) == "undefined" || list_param.page < 0){
+			list_param.page = 0;
+		}
+	}
+	function emptyMessageContents(){
+		$('.wma_message_content').empty();
+		if (listSplit.toString() == "true"){
+			check_scroll();
+		}
+	}
+	var dragMessage = {
+		draggable : function() {
+			var chkMessage_wma = null;
+			$("[id^=liMessage_wma_] .ui-draggable").draggable({
+				containment: 'document',
+				appendTo: "body",
+				cursorAt : {top: 20, left: 0},
+				helper: function(e, ui) {
+					var $help = "";
+					var clickedLi = $(this).parent();
+					$help = $("<div id='drag_helper' class='lst_move no'></div>");
+					var title = "";
+					chkMessage_wma = getCheckedItemArray();
+					if(chkMessage_wma.length == 0) {
+						chkMessage_wma.push(clickedLi.find("input:checkbox[name='chkMessage_wma']").val());
+					}
+					if(chkMessage_wma.length > 0) {
+						title = draggable_count_msg.replace("{0}", chkMessage_wma.length);
+						if(chkMessage_wma.length == 1) {
+							title = dragMessage.escapeHtml($.trim(clickedLi.find("div.title > a").text()));
+							if(title.length > 50 ){
+								title = title.substring(0,50)+"...";
+							}
+						}
+						$help.append(title);
+					} else {
+						$help = $("<div></div>");
+					}
+					return $help;
+				}
+			});
+
+			$('#generalListArea_wma .controlbar').draggable({
+				opacity: 0.7,
+				containment: 'html',
+				axis : 'x',
+				start : function(){
+					$('.list_vertical').css('opacity', 0.6);
+				},
+				stop : function(){
+					$('.list_vertical').css('opacity', 1);
+					//listContainerWidth = $(this).position().left;
+					//if(listContainerWidth < 365)
+					//	listContainerWidth = 365;
+
+					controlVertical();
+				}
+			});
+
+			$("#systemMailboxUl .ui-droppable").droppable({
+				tolerance: "pointer",
+				drop: function(e,ui) {
+					var destination = $(this).attr("id");
+					var trashType = $(this).hasClass("boxtype_trash");
+					if(trashType) {
+						dragMessage.remove(chkMessage_wma);
+					} else {
+						dragMessage.move(destination, chkMessage_wma);
+					}
+					$(this).removeAttr("style");
+				},
+				over: function(e,ui) {
+					$("#drag_helper").removeClass("no");
+				},
+				out: function(e,ui) {
+					$("#drag_helper").addClass("no");
+				}
+			});
+
+			$("#tree_contents_area a.dynatree-title ").droppable({
+				tolerance: "pointer",
+				drop: function(e,ui) {
+					var nodeLi = $(e.target);
+					var destination = nodeLi.find("span").attr("path");
+					dragMessage.move(destination, chkMessage_wma);
+					$(this).removeAttr("style");
+				},
+				over: function(e,ui) {
+					$("#drag_helper").removeClass("no");
+				},
+				out: function(e,ui) {
+					$("#drag_helper").addClass("no");
+				}
+			});
+		},
+		move : function(destination, chkMessage_wma) {
+			if(destination === list_param.path)
+				return;
+			$("#pagingFlag").val("false");
+			if(chkMessage_wma != null){
+				moveFlag = true;
+				var numbers = chkMessage_wma.toString().replace(/,/g,";");
+				bindDiv.ajaxSetting('/wma/msgm.do',{
+					async : true,
+					type : 'POST',
+					data : {
+						acton : 'move',
+						destination : destination,
+						numbers : numbers,
+						path : list_param.path
+					},
+					success : function() {
+						emptyMessageContents();
+						checkLastPage();
+						getMessages_wma();
+						moveFlag = false;
+					},
+					error : function() {
+						alert(lang.status.job.failure);
+					}
+				});
+			}
+		},
+		remove : function(chkMessage_wma) {
+			moveFlag = true;
+			if(list_param.path === trash_folder_path)
+				return;
+			$("#pagingFlag").val("false");
+			var numbers = chkMessage_wma.toString().replace(/,/g,";");
+			bindDiv.ajaxSetting('/wma/msgm.do',{
+				async : true,
+				type : 'POST',
+				data : {
+					acton : 'delete',
+					path : list_param.path,
+					numbers : numbers,
+					purge : false
+				},
+				success : function() {
+					emptyMessageContents();
+					checkLastPage();
+					getMessages_wma();
+					checkQuota_wma();
+					moveFlag = false;
+				},
+				error : function() {
+					alert(lang.status.job.failure);
+				}
+			});
+		},
+		escapeHtml : function(str) {
+			var charMap = {
+				'<' : '&lt;',
+				'>' : '&gt;',
+				'&' : '&amp;',
+				'"' : '&quot;',
+				"'" : '&#39;'
+			};
+			return str.replace(/[<>&"']/g, function(ch) {
+				return charMap[ch];
+			});
+		}
+	}
+	try {
+		dragMessage.draggable();
+	} catch(e) { alert(e); }
+	function _showUserContextMenu_wma(that, event){
+		showUserContextMenu_wma(that);event.stopPropagation();return false;
+	}
+	<c:if test="${folderfullname ne prefs.draftFolder}">
+	function refreshMessages_wma(){
+		getMessages_wma();
+	}
+	</c:if>
+</script>
